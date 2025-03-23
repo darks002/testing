@@ -1049,7 +1049,7 @@ en la descripcion es importante que coloques el siguiente numero de caso para da
 y esta al pendiente de tu bandeja porque una vez te habiliten los permisos recibiras la notificacion, saludos
 ```
 
-It seems that the administrator expects to receive an email to assign this user certain permissions to perform actions as the user Pedro. The mail agent used is EXIM. ​​We obtain this information if we detail the emails in Mbox.
+Apparently, the administrator is waiting to receive Carlos's request via email to grant him privileges that allow him to check Pedro's emails as well as send emails on Pedro's behalf. The mail agent used is EXIM. ​​We obtain this information if we detail the emails in Mbox.
 
 The administrator is waiting for specific information:
 Applicant's name:
@@ -1078,7 +1078,7 @@ I'm checking to see if I get answers from the administrator.
 
 ![image](https://github.com/user-attachments/assets/bc04dbe1-07b8-4cf1-9690-d3f1123bc3ce)
 
-The administrator has responded and has granted certain privileges, so we check the permissions with sudo -l
+The administrator has responded and has granted certain privileges,It also indicates that these permits are temporary and can be revoked, so it would be necessary to reapply for them. So we check the permissions with sudo -l
 
 ![image](https://github.com/user-attachments/assets/3f9cc25f-ad49-4083-b98c-5437c4786ede)
 
