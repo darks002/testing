@@ -1826,4 +1826,3 @@ The exploit worked by getting the bash as root
 
 
 
-
