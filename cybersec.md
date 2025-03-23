@@ -153,7 +153,7 @@ Dockerfile
 ```
 FROM cybersec:latest
 
-CMD /root/conf.sh & && \
+CMD /root/conf.sh & \
     tail -f /dev/null
 ```
 
