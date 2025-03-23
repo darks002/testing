@@ -26,11 +26,12 @@ The other service present on the machine is `SSH`, which runs with
 
 ```sudo service ssh start```
 
-For the `hall` and `sec2pass` binaries I send the source codes separately.
+For the `hallx` and `sec2pass` binaries I send the source codes separately.
 
 ### Automation / Crons
 
-wrapper of gdb: `/usr/local/bin/secure_gdb`
+`/usr/local/bin/secure_gdb :` 
+The gdb wrapper is responsible for wrapping gdb to secure its execution with sudo and thus, along with the /root/.gdbinit configuration file, prevent direct escalation to root without having to exploit the bof.
 
 ```bash
 #!/bin/bash
@@ -62,7 +63,10 @@ fi
 /usr/bin/gdb -nx -x /root/.gdbinit "$@"
 ```
 
-Initialization file for `gdb` : `/root/.gdbinit`
+
+
+`/root/.gdbinit:` 
+gdb configuration file to block the execution of system commands
 
 ```
 set confirm off
@@ -72,7 +76,70 @@ define shell
 end
 ```
 
-The `gdb` wrapper is responsible for wrapping gdb to secure its execution with `sudo` and thus, along with the `/root/.gdbinit` configuration file, prevent direct escalation to root without having to exploit the `bof`.
+
+
+`/root/conf.sh:` 
+This script is responsible for simulating the interaction with the system administrator via email to assign privileges to users. It is also responsible for removing privileges from users every 3 minutes. On the other hand, the script starts the SSH and HTTP services. Finally, it runs an additional script in the background [restart.sh].
+
+```bash
+#!/bin/bash
+# script to start the machine with its services and to set and reset the permissions assigned to users
+
+# start services and cleanup script
+service ssh start
+setsid python3 /root/cybersec/app.py &
+setsid /root/restart.sh &
+
+n="1"
+m="1"
+while true; do
+    # to enable the user Pedro to use gdb to debug the binary with privileges
+    if grep -q "1250314" /var/mail/mail && [[ "$n" -eq 1 ]]; then
+           echo "pedro ALL=(root) NOPASSWD: /usr/local/bin/secure_gdb" >> /etc/sudoers
+           sleep 5
+           echo "Pedro, he habilitado un script con el que podrás depurar el binario como root (hemos configurado un entorno lo más seguro posible debido a las implicaciones que esto podría tener). Puedes revisar tus permisos de sudo. Ten en cuenta que estos permisos se revocan ocasionalmente, por lo que tendrás que solicitarlos de nuevo." |mail -s "gdb" pedro
+           n="2"
+    fi
+
+    # To enable user Carlos to use Exim while Pedro returns.
+    if grep -q "1250319" /var/mail/mail && grep -q "000-01458" /var/mail/mail && [[ "$m" -eq 1 ]]; then
+           echo "carlos ALL=(pedro) NOPASSWD: /usr/sbin/exim " >> /etc/sudoers
+           sleep 5
+           echo "Hola Carlos, ya puedes revisar el buzón de Pedro y responder sus correos. Estos permisos se revocarán periódicamente y tendrás que volver a solicitarlos." |mail -s "gdb" carlos
+           m="2"
+    fi
+
+    # to reset permissions every 3 min.
+    if [[ "$n" -eq 2 || "$m" -eq 2 ]]; then
+          echo " " > /var/mail/mail
+          sleep 180
+          cat /root/sudoers > /etc/sudoers
+          n="1"
+          m="1"
+    fi
+    sleep 20
+done
+```
+
+
+
+`/root/restart.sh:`
+This script is responsible for cleaning the root, Pedro, Carlos and TMP directories in case any player leaves files behind. The cleanup is performed every 3 minutes. 
+
+```bash
+#!/bin/bash
+# cleanup script, user directories and tmp are cleaned
+while true; do
+
+  find /home/pedro -mindepth 1 -maxdepth 1 ! -name 'hallx' ! -name 'mbox' ! -name '.*' ! -name 'analisis_hallx' -exec rm -rf {} +
+  find /home/carlos -mindepth 1 -maxdepth 1 ! -name 'mbox' ! -name 'user.txt' ! -name '.*' -exec rm -rf {} +
+  find /tmp -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  find /root -mindepth 1 -maxdepth 1 ! -name 'conf.sh' ! -name 'cybersec' ! -name 'restart.sh' ! -name 'root.txt' ! -name 'sudoers' ! -name '.*' -exec rm -rf {} +
+
+  # Wait 3 minutes before the next cleaning
+  sleep 180
+done
+```
 
 
 ### Firewall Rules
